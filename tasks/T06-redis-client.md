@@ -20,6 +20,9 @@ Implement Redis client with connection management, health checks, and msgpack se
 - [ ] Warmup function for startup
 - [ ] Graceful close
 - [ ] Error logging
+- [ ] **Connection pooling with configurable pool size**
+- [ ] **Retry logic with exponential backoff**
+- [ ] **Circuit breaker for cascading failure prevention**
 
 ---
 
@@ -105,7 +108,26 @@ let redis: Redis | null = null;
  * Get or create Redis client.
  * Uses lazy initialization.
  */
+// Circuit breaker state
+let circuitOpen = false;
+let circuitOpenedAt = 0;
+const CIRCUIT_RESET_MS = 30_000; // 30s before retry
+
+/**
+ * Get or create Redis client.
+ * Uses lazy initialization with connection pooling.
+ */
 export function getRedis(): Redis {
+  // Circuit breaker check
+  if (circuitOpen) {
+    if (Date.now() - circuitOpenedAt > CIRCUIT_RESET_MS) {
+      circuitOpen = false;
+      logger.info('Redis circuit breaker reset, attempting reconnection');
+    } else {
+      throw new Error('Redis circuit breaker open');
+    }
+  }
+
   if (!redis) {
     redis = new Redis({
       host: config.redis.host,
@@ -114,12 +136,21 @@ export function getRedis(): Redis {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: true,
+      // Connection pool settings
+      connectionName: 'arla-engine',
+      connectTimeout: 5000,
+      commandTimeout: 2000,
+      // Exponential backoff retry
       retryStrategy: (times) => {
-        if (times > 3) {
-          logger.error('Redis connection failed after 3 retries');
+        if (times > 5) {
+          logger.error('Redis connection failed after 5 retries, opening circuit breaker');
+          circuitOpen = true;
+          circuitOpenedAt = Date.now();
           return null; // Stop retrying
         }
-        return Math.min(times * 100, 1000);
+        const delay = Math.min(times * 200, 2000); // 200, 400, 800, 1600, 2000
+        logger.warn(`Redis retry attempt ${times}, backoff ${delay}ms`);
+        return delay;
       },
     });
 

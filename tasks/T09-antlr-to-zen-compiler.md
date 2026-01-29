@@ -231,6 +231,7 @@ function createAlwaysTrueRule(): ZenRule {
     content: {
       hitPolicy: 'first',
       rules: [],
+      default: { result: true }, // Explicit default for always-true
     },
     position: { x: 200, y: 0 },
   });
@@ -258,6 +259,7 @@ function parseAndRule(conditionLines: string[]): ZenRule {
         conditions: conditionsMap,
         output: { result: true },
       }],
+      default: { result: false }, // Explicit false when no match
     },
     position: { x: 200, y: 0 },
   });
@@ -282,6 +284,7 @@ function parseOrRule(conditionLines: string[]): ZenRule {
     content: {
       hitPolicy: 'first',
       rules,
+      default: { result: false }, // Explicit false when no match
     },
     position: { x: 200, y: 0 },
   });
@@ -303,6 +306,7 @@ function parseSingleCondition(line: string): ZenRule {
         conditions: { [condition.field]: condition },
         output: { result: true },
       }],
+      default: { result: false }, // Explicit false when no match
     },
     position: { x: 200, y: 0 },
   });

@@ -16,6 +16,7 @@ Application entry point: warmup connections, load configs, start server, handle 
 
 - [ ] Warmup Redis and Aurora connections
 - [ ] Load all configs before accepting traffic
+- [ ] **Validate all compiled rules at startup (fail hard on invalid)**
 - [ ] Start gRPC server
 - [ ] Handle SIGINT/SIGTERM gracefully
 - [ ] Log startup metrics periodically
@@ -72,9 +73,38 @@ Key features:
 2. Warmup Redis (getRedis().ping())
 3. Warmup Aurora (pool.execute('SELECT 1'))
 4. Load configs (loadAllConfigs())
-5. Start gRPC server
-6. Log "ready"
-7. Start metrics interval
+5. **Validate all compiled rules (fail startup if any invalid)**
+6. Start gRPC server
+7. Log "ready"
+8. Start metrics interval
+```
+
+### Rule Validation (Critical)
+```typescript
+// After loadAllConfigs(), before starting server:
+import { validateCriteria } from './rules/compiler';
+import { getCompiledRules } from './config/loader';
+
+async function validateAllRules(): Promise<void> {
+  const rules = getCompiledRules();
+  const errors: string[] = [];
+  
+  for (const [questionId, rule] of rules) {
+    if (rule.sourceAntlr) {
+      const result = validateCriteria(rule.sourceAntlr);
+      if (!result.valid) {
+        errors.push(`${questionId}: ${result.error}`);
+      }
+    }
+  }
+  
+  if (errors.length > 0) {
+    logger.error('Fatal: Invalid rules detected at startup', { count: errors.length, errors });
+    throw new Error(`Startup aborted: ${errors.length} invalid rules`);
+  }
+  
+  logger.info('All rules validated successfully', { count: rules.size });
+}
 ```
 
 ## Shutdown Order
